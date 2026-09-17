@@ -1,0 +1,130 @@
+// Regras reais com Firebase Auth + papéis por pessoa — ver
+// segundo-cerebro/padroes/dados-e-seguranca.md e decisoes.md #1.
+//
+// Papéis vivem em pessoas/{id}.papeis (só os NÃO-deriváveis: "admin",
+// "tesoureiro"). "pastorAuxiliar" e "liderCelula" são derivados checando se
+// a pessoa aparece como pastorId/liderId em supervisoes/celulas — nunca
+// duplicados aqui (mesma razão de "referenciar por ID" do padrão).
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function isNonEmptyString(v, maxLen) { return v is string && v.size() > 0 && v.size() <= maxLen; }
+
+    function pessoaId() {
+      return get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.pessoaId;
+    }
+    function papeis() {
+      return get(/databases/$(database)/documents/pessoas/$(pessoaId())).data.papeis;
+    }
+    function isAdmin() { return isSignedIn() && ("admin" in papeis()); }
+    function isTesoureiro() { return isAdmin() || (isSignedIn() && "tesoureiro" in papeis()); }
+    function lideraCelula(celulaId) {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/celulas/$(celulaId)).data.liderId == pessoaId();
+    }
+    function pastoreiaSupervisao(supervisaoId) {
+      return isSignedIn()
+        && get(/databases/$(database)/documents/supervisoes/$(supervisaoId)).data.pastorId == pessoaId();
+    }
+    function pastoreiaCelula(celulaId) {
+      return isSignedIn()
+        && pastoreiaSupervisao(get(/databases/$(database)/documents/celulas/$(celulaId)).data.supervisaoId);
+    }
+    // Bootstrap: só existe UMA janela, antes do primeiro admin ser criado,
+    // pra deixar o próprio app criar a conta do Pastor Geral sem precisar de
+    // ninguém mexendo no console do Firebase à mão. Fecha sozinha depois.
+    function emBootstrap() {
+      return !exists(/databases/$(database)/documents/config/bootstrap)
+        || get(/databases/$(database)/documents/config/bootstrap).data.adminCriado == false;
+    }
+
+    // ===================================================================
+    match /config/bootstrap {
+      allow read: if true;
+      // O 1º write desse doc (criarPrimeiroAdmin) já nasce com adminCriado
+      // TRUE — é o último passo do fluxo, feito DEPOIS de pessoa+usuario já
+      // existirem. Exigir "== false" aqui negava essa gravação (create,
+      // porque o doc ainda não existe nesse ponto) e deixava o bootstrap
+      // "aberto" pra sempre mesmo com o admin já criado (bug real,
+      // 2026-08-24). Só exige que o campo seja um boolean.
+      allow create: if request.resource.data.adminCriado is bool;
+      allow update: if isSignedIn()
+        && resource.data.adminCriado == false
+        && request.resource.data.adminCriado == true
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["adminCriado"]);
+      allow delete: if false;
+    }
+
+    // usuarios/{uid} — ponte uid (Firebase Auth) -> pessoa. Só admin cria
+    // login pra alguém (ver auth.js, criarLoginParaPessoa via app secundário)
+    // — exceto na janela de bootstrap, pro Pastor Geral se auto-cadastrar.
+    // Configurações gerais (ex.: padrão semanal de cultos usado pra gerar
+    // os cultos do mês em lote — ver cultos.js).
+    match /config/padraoCultos {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /usuarios/{uid} {
+      allow read: if isSignedIn() && (request.auth.uid == uid || isAdmin());
+      allow create: if (isSignedIn() && request.auth.uid == uid && emBootstrap())
+        || isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    // pessoas — membros e visitantes.
+    match /pessoas/{id} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin()
+        || (emBootstrap() && isSignedIn() && "admin" in request.resource.data.papeis)
+        || (lideraCelula(request.resource.data.celulaId) && isNonEmptyString(request.resource.data.nome, 200));
+      allow update: if isAdmin()
+        || (lideraCelula(resource.data.celulaId) && lideraCelula(request.resource.data.celulaId));
+      allow delete: if isAdmin();
+    }
+
+    match /departamentos/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /supervisoes/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /celulas/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+
+      // isTesoureiro() também lê (não só admin/pastor/líder): a oferta de
+      // célula é dado financeiro, e o fluxo de caixa (financeiro.js) precisa
+      // somar ofertas de TODAS as células via collectionGroup("relatorios").
+      match /relatorios/{data} {
+        allow read: if isAdmin() || isTesoureiro() || pastoreiaCelula(id) || lideraCelula(id);
+        allow create, update: if isAdmin() || lideraCelula(id);
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /cultos/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /dizimos/{id} {
+      allow read, write: if isTesoureiro();
+    }
+
+    match /custos/{id} {
+      allow read, write: if isTesoureiro();
+    }
+
+    match /custosRecorrentes/{id} {
+      allow read, write: if isTesoureiro();
+    }
+  }
+}

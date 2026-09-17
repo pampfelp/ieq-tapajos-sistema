@@ -1,0 +1,49 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="prata" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="512" y2="512">
+      <stop offset="0%" stop-color="#F2F4F6"/>
+      <stop offset="45%" stop-color="#C7CCD1"/>
+      <stop offset="100%" stop-color="#8E939B"/>
+    </linearGradient>
+    <linearGradient id="fundoTile" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1A1A1F"/>
+      <stop offset="100%" stop-color="#0B0B0D"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="512" height="512" rx="96" fill="#0B0B0D"/>
+
+  <!-- 4 tiles arredondados, com um respiro entre eles -->
+  <rect x="16" y="16" width="230" height="230" rx="28" fill="url(#fundoTile)"/>
+  <rect x="266" y="16" width="230" height="230" rx="28" fill="url(#fundoTile)"/>
+  <rect x="16" y="266" width="230" height="230" rx="28" fill="url(#fundoTile)"/>
+  <rect x="266" y="266" width="230" height="230" rx="28" fill="url(#fundoTile)"/>
+
+  <!-- Cruz (topo-esquerda) -->
+  <g stroke="url(#prata)" stroke-width="20" stroke-linecap="round">
+    <line x1="131" y1="52" x2="131" y2="210"/>
+    <line x1="72" y1="104" x2="190" y2="104"/>
+  </g>
+
+  <!-- Pomba (topo-direita), descendo com as asas abertas -->
+  <g fill="url(#prata)" stroke="none">
+    <circle cx="381" cy="76" r="15"/>
+    <path d="M381,89 C393,89 403,101 401,120 C398,146 390,170 381,185 C372,170 364,146 361,120 C359,101 369,89 381,89 Z"/>
+    <path d="M374,99 C348,90 315,97 289,122 C285,125 286,129 291,130 C315,134 336,129 351,117 C359,111 367,105 374,99 Z"/>
+    <path d="M374,99 C348,90 315,97 289,122 C285,125 286,129 291,130 C315,134 336,129 351,117 C359,111 367,105 374,99 Z" transform="translate(762,0) scale(-1,1)"/>
+  </g>
+
+  <!-- Cálice (baixo-esquerda) -->
+  <g fill="none" stroke="url(#prata)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M83 300 C83 350, 110 375, 131 375 C152 375, 179 350, 179 300"/>
+    <line x1="131" y1="375" x2="131" y2="418"/>
+    <line x1="93" y1="440" x2="169" y2="440"/>
+  </g>
+
+  <!-- Coroa (baixo-direita) -->
+  <g fill="none" stroke="url(#prata)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M320 435 L330 355 L363 393 L381 345 L399 393 L432 355 L442 435 Z"/>
+    <line x1="316" y1="435" x2="446" y2="435"/>
+    <circle cx="381" cy="337" r="8" fill="url(#prata)" stroke="none"/>
+  </g>
+</svg>
