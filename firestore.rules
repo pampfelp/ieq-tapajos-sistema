@@ -40,6 +40,13 @@ service cloud.firestore {
       return !exists(/databases/$(database)/documents/config/bootstrap)
         || get(/databases/$(database)/documents/config/bootstrap).data.adminCriado == false;
     }
+    // líder pode tirar alguém da própria célula (celulaId -> null) ou trazer
+    // alguém pra dentro dela (celulaId null -> a própria célula) — não só
+    // editar quem já está lá. lideraCelula(null) não é avaliável (get() com
+    // path inválido), por isso o null é tratado à parte.
+    function podeMexerCelulaDaPessoa(antigo, novo) {
+      return (antigo == null || lideraCelula(antigo)) && (novo == null || lideraCelula(novo));
+    }
 
     // ===================================================================
     match /config/bootstrap {
@@ -81,8 +88,7 @@ service cloud.firestore {
       allow create: if isAdmin()
         || (emBootstrap() && isSignedIn() && "admin" in request.resource.data.papeis)
         || (lideraCelula(request.resource.data.celulaId) && isNonEmptyString(request.resource.data.nome, 200));
-      allow update: if isAdmin()
-        || (lideraCelula(resource.data.celulaId) && lideraCelula(request.resource.data.celulaId));
+      allow update: if isAdmin() || podeMexerCelulaDaPessoa(resource.data.celulaId, request.resource.data.celulaId);
       allow delete: if isAdmin();
     }
 

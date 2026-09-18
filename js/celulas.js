@@ -5,7 +5,7 @@
 */
 import { db } from "../firebase-init.js";
 import {
-  collection, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, serverTimestamp, writeBatch, query, orderBy,
+  collection, addDoc, updateDoc, deleteDoc, doc, setDoc, getDocs, serverTimestamp, writeBatch,
 } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js";
 import {
   esc, fmtMoeda, fmtData, formatarDataISO, parseDataLocal, toast, abrirModal, fecharModal, confirmar, emSegundoPlano, ICONS, gerarId,
@@ -14,7 +14,7 @@ import { STATE } from "./state.js";
 import { AUTH, isAdmin, isTesoureiro, souLiderDe } from "./auth.js";
 import { montarSeletorPessoas } from "./seletor-pessoas.js";
 import { montarComboboxUnico } from "./combobox.js";
-import { primeiraOcorrenciaSemanal, proximaSemana, calcularOcorrencias, rotuloStatusOcorrencia, corPillStatusOcorrencia, intervaloDoPeriodo } from "./dominio-util.js";
+import { primeiraOcorrenciaSemanal, proximaSemana, calcularOcorrencias, rotuloStatusOcorrencia, corPillStatusOcorrencia } from "./dominio-util.js";
 
 const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 
@@ -74,27 +74,40 @@ export function renderCelulas() {
     if (e.target.closest("button")) return;
     abrirVisualizarCelula(tr.dataset.id);
   }));
-
-  if (subtabCelulasAtiva === "agenda") renderAgendaCelulas();
 }
-
-let subtabCelulasAtiva = "lista";
 
 export function iniciarCelulasEventos() {
   document.getElementById("btn-nova-celula").addEventListener("click", () => abrirFormCelula(null));
-
-  document.querySelectorAll(".sub-tab-celulas").forEach((btn) => btn.addEventListener("click", () => {
-    document.querySelectorAll(".sub-tab-celulas").forEach((b) => b.classList.remove("primary"));
-    btn.classList.add("primary");
-    subtabCelulasAtiva = btn.dataset.subtabCelulas;
-    document.querySelectorAll(".subview-celulas").forEach((v) => { v.style.display = "none"; });
-    document.getElementById(`subview-celulas-${subtabCelulasAtiva}`).style.display = "block";
-    if (subtabCelulasAtiva === "agenda") renderAgendaCelulas();
-  }));
-  document.getElementById("filtro-agenda-periodo").addEventListener("change", renderAgendaCelulas);
 }
 
-/* ===== Agenda do período (todas as células, não só uma de cada vez) ===== */
+/* ===== Agenda (tela própria, todas as células, filtrada por mês/ano) ===== */
+const NOMES_MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+
+export function iniciarAgendaEventos() {
+  const selMes = document.getElementById("filtro-agenda-mes");
+  const selAno = document.getElementById("filtro-agenda-ano");
+  const hoje = new Date();
+
+  selMes.innerHTML = `<option value="todos">Todos os meses</option>` +
+    NOMES_MESES.map((m, i) => `<option value="${i}" ${i === hoje.getMonth() ? "selected" : ""}>${m}</option>`).join("");
+
+  const anoAtual = hoje.getFullYear();
+  const anos = [anoAtual - 1, anoAtual, anoAtual + 1];
+  selAno.innerHTML = anos.map((a) => `<option value="${a}" ${a === anoAtual ? "selected" : ""}>${a}</option>`).join("");
+
+  selMes.addEventListener("change", renderAgendaCelulas);
+  selAno.addEventListener("change", renderAgendaCelulas);
+  renderAgendaCelulas();
+}
+
+function intervaloMesAno() {
+  const mes = document.getElementById("filtro-agenda-mes").value;
+  const ano = Number(document.getElementById("filtro-agenda-ano").value);
+  if (mes === "todos") return { inicio: new Date(ano, 0, 1), fim: new Date(ano, 11, 31, 23, 59, 59) };
+  const m = Number(mes);
+  return { inicio: new Date(ano, m, 1), fim: new Date(ano, m + 1, 0, 23, 59, 59) };
+}
+
 function celulasAcessiveisParaAgenda() {
   if (isAdmin() || isTesoureiro()) return STATE.celulas;
   const idsSupervisao = new Set(AUTH.supervisoesQuePastoreia.map((s) => s.id));
@@ -129,9 +142,9 @@ async function montarRegistrosPorCelula(celulas) {
   return mapa;
 }
 
-async function renderAgendaCelulas() {
-  const periodo = document.getElementById("filtro-agenda-periodo").value;
-  const { inicio, fim } = intervaloDoPeriodo(periodo);
+export async function renderAgendaCelulas() {
+  if (!document.getElementById("filtro-agenda-mes")) return; // view ainda não iniciada
+  const { inicio, fim } = intervaloMesAno();
   const celulas = celulasAcessiveisParaAgenda();
   const registrosPorCelula = await montarRegistrosPorCelula(celulas);
 
@@ -150,15 +163,15 @@ async function renderAgendaCelulas() {
   });
   linhas.sort((a, b) => b.ocorrencia.data - a.ocorrencia.data);
 
-  const totalMembrosEsperados = linhas.reduce((s, l) => s + membrosDaCelula(l.celula.id).length, 0);
   const totalPresentes = linhas.reduce((s, l) => s + (l.ocorrencia.registro?.presencas || []).filter((p) => p.presente).length, 0);
   const totalCriancas = linhas.reduce((s, l) => s + (l.ocorrencia.registro?.criancas || []).length, 0);
+  const totalVisitantes = linhas.reduce((s, l) => s + (l.ocorrencia.registro?.convidados || []).length, 0);
   const totalOferta = linhas.reduce((s, l) => s + (l.ocorrencia.registro?.valorOferta || 0), 0);
   document.getElementById("kpi-agenda-celulas").innerHTML = `
     <div class="kpi-card"><div class="valor num">${linhas.length}</div><div class="label">Ocorrências no período</div></div>
-    <div class="kpi-card"><div class="valor num">${totalPresentes}/${totalMembrosEsperados}</div><div class="label">Presentes / esperados</div></div>
-    <div class="kpi-card"><div class="valor num">${totalCriancas}</div><div class="label">Crianças</div></div>
-    <div class="kpi-card positive"><div class="valor num">${fmtMoeda(totalOferta)}</div><div class="label">Oferta no período</div></div>`;
+    <div class="kpi-card"><div class="valor num">${totalPresentes}</div><div class="label">Membros presentes</div></div>
+    <div class="kpi-card"><div class="valor num">${totalCriancas + totalVisitantes}</div><div class="label">Convidados (crianças + visitantes)</div></div>
+    <div class="kpi-card positive"><div class="valor num">${fmtMoeda(totalOferta)}</div><div class="label">Ofertas</div></div>`;
 
   const tbody = document.getElementById("tbody-agenda-celulas");
   document.getElementById("empty-agenda-celulas").style.display = linhas.length ? "none" : "block";
@@ -189,7 +202,8 @@ function abrirVisualizarCelula(id) {
   const c = STATE.celulas.find((x) => x.id === id);
   if (!c) return;
   const membros = membrosDaCelula(c.id);
-  const podeEditar = isAdmin();
+  const podeEditarCelula = isAdmin();
+  const podeGerenciarMembros = isAdmin() || souLiderDe(c.id);
   const corpo = abrirModal(c.nome, `
     <div class="field-grid">
       <div class="field"><label>Supervisão</label><div>${esc(nomeSupervisao(c.supervisaoId))}</div></div>
@@ -197,21 +211,50 @@ function abrirVisualizarCelula(id) {
     </div>
     <div class="field-grid">
       <div class="field"><label>Dia da célula</label><div>${DIAS_SEMANA[c.diaSemana] ?? "—"} ${c.horario ? "— " + esc(c.horario) : ""}</div></div>
-      <div class="field"><label>Membros</label><div>${membros.length}</div></div>
+      <div class="field"><label>Endereço</label><div>${esc(c.endereco) || "—"}</div></div>
     </div>
-    <div class="field"><label>Endereço</label><div>${esc(c.endereco) || "—"}</div></div>
+    <div class="field">
+      <label>Membros (${membros.length})</label>
+      <div class="chips-selecao" id="lista-membros-celula">
+        ${membros.map((m) => `<span class="chip selecionado" data-remover-membro="${m.id}" ${podeGerenciarMembros ? "" : "style=\"cursor:default;\""}>${esc(m.nome)}${podeGerenciarMembros ? " ✕" : ""}</span>`).join("") || '<span style="color:var(--ink-faint);font-size:13px;">Nenhum membro ainda.</span>'}
+      </div>
+      ${podeGerenciarMembros ? `<div id="combo-add-membro" style="margin-top:8px;"></div>` : ""}
+    </div>
   `, `
-    <button type="button" class="btn danger" id="btn-excluir-celula" ${podeEditar ? "" : "disabled"}>Excluir</button>
+    <button type="button" class="btn danger" id="btn-excluir-celula" ${podeEditarCelula ? "" : "disabled"}>Excluir</button>
     <span style="display:flex; gap:8px;">
       <button type="button" class="btn" data-fechar-modal>Fechar</button>
-      ${podeEditar ? `<button type="button" class="btn" id="btn-editar-celula">Editar</button>` : ""}
-      <button type="button" class="btn primary" id="btn-ver-agenda">Ver agenda</button>
+      ${podeEditarCelula ? `<button type="button" class="btn primary" id="btn-editar-celula">Editar</button>` : ""}
     </span>
   `);
-  corpo.parentElement.querySelector("#btn-ver-agenda").addEventListener("click", () => { fecharModal(); abrirAgendaCelula(c); });
+
+  if (podeGerenciarMembros) {
+    corpo.querySelectorAll("[data-remover-membro]").forEach((chip) => chip.addEventListener("click", async () => {
+      const pessoaId = chip.dataset.removerMembro;
+      const pessoa = STATE.pessoas.find((p) => p.id === pessoaId);
+      const ok = await confirmar(`Remover ${pessoa?.nome} da célula "${c.nome}"?`);
+      if (!ok) return;
+      await emSegundoPlano(updateDoc(doc(db, "pessoas", pessoaId), { celulaId: null }), "Não foi possível remover.");
+      toast("Removido da célula.", "sucesso");
+      abrirVisualizarCelula(id);
+    }));
+
+    montarComboboxUnico({
+      containerEl: corpo.querySelector("#combo-add-membro"),
+      opcoes: STATE.pessoas.filter((p) => p.celulaId !== c.id).map((p) => ({ id: p.id, label: `${p.nome} (${p.tipo === "membro" ? "membro" : "visitante"})` })),
+      permitirVazio: false, placeholder: "Adicionar pessoa à célula...",
+      onSelecionar: async (pessoaId) => {
+        if (!pessoaId) return;
+        await emSegundoPlano(updateDoc(doc(db, "pessoas", pessoaId), { celulaId: c.id }), "Não foi possível adicionar.");
+        toast("Adicionado à célula.", "sucesso");
+        abrirVisualizarCelula(id);
+      },
+    });
+  }
+
   corpo.parentElement.querySelector("#btn-editar-celula")?.addEventListener("click", () => abrirFormCelula(c));
   corpo.parentElement.querySelector("#btn-excluir-celula").addEventListener("click", async () => {
-    if (!podeEditar) return;
+    if (!podeEditarCelula) return;
     const ok = await confirmar(`Excluir a célula "${c.nome}"? Essa ação não pode ser desfeita.`);
     if (!ok) return;
     fecharModal();
@@ -280,50 +323,6 @@ function abrirFormCelula(celulaExistente) {
     }
     toast("Célula salva.", "sucesso");
   });
-}
-
-/* ===== agenda da célula (ocorrências semanais + pendências) ===== */
-async function abrirAgendaCelula(celula) {
-  let relatoriosSnap;
-  try {
-    relatoriosSnap = await getDocs(query(collection(db, "celulas", celula.id, "relatorios"), orderBy("data", "desc")));
-  } catch (err) {
-    toast(`Agenda de ${celula.nome}: ${err.message}`, "erro");
-    return;
-  }
-  const registros = new Map();
-  relatoriosSnap.docs.forEach((d) => registros.set(d.id, { id: d.id, ...d.data() }));
-
-  const dataInicio = celula.dataInicio?.toDate ? celula.dataInicio.toDate() : new Date(celula.dataInicio);
-  const primeira = primeiraOcorrenciaSemanal(dataInicio, celula.diaSemana);
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-  const fimDoMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
-  const ocorrencias = calcularOcorrencias({
-    dataInicio: primeira, hoje, ateData: fimDoMes, proximaDataFn: proximaSemana,
-    chaveFn: formatarDataISO, registros, janelaPendenteDias: 7,
-  });
-
-  const corpo = abrirModal(`Agenda — ${celula.nome}`, `
-    <p style="color:var(--ink-soft); font-size:13px; margin-bottom:12px;">Ocorrências esperadas deste mês (toda ${DIAS_SEMANA[celula.diaSemana]}), passadas e futuras.</p>
-    <div class="agenda-lista">
-      ${ocorrencias.map((o) => `
-        <div class="agenda-item ${o.status}" data-chave="${o.chave}">
-          <div>
-            <div class="data">${fmtData(o.data)}</div>
-            <div style="font-size:12px; color:var(--ink-soft);">
-              ${o.registro ? `${(o.registro.presencas || []).filter((p) => p.presente).length} presentes · ${(o.registro.convidados || []).length} convidados · ${fmtMoeda(o.registro.valorOferta || 0)}` : "Sem relatório"}
-            </div>
-          </div>
-          <span class="pill ${corPillStatusOcorrencia(o.status)}">${rotuloStatusOcorrencia(o.status)}</span>
-        </div>`).join("") || `<p style="color:var(--ink-soft);">Nenhuma ocorrência esperada ainda.</p>`}
-    </div>
-  `, `<span></span><button type="button" class="btn" data-fechar-modal>Fechar</button>`);
-
-  corpo.parentElement.querySelectorAll(".agenda-item").forEach((el) => el.addEventListener("click", () => {
-    const o = ocorrencias.find((x) => x.chave === el.dataset.chave);
-    fecharModal();
-    abrirFormRelatorio(celula, o.chave, o.data, o.registro);
-  }));
 }
 
 /* ===== relatório de célula ===== */

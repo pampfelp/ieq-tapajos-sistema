@@ -18,7 +18,7 @@ import {
 } from "./js/auth.js";
 import { STATE } from "./js/state.js";
 import { renderPessoas, iniciarPessoasEventos, abrirGerenciarDepartamentos, abrirGerenciarUsuarios } from "./js/pessoas.js";
-import { renderCelulas, iniciarCelulasEventos, abrirGerenciarSupervisoes } from "./js/celulas.js";
+import { renderCelulas, iniciarCelulasEventos, abrirGerenciarSupervisoes, iniciarAgendaEventos, renderAgendaCelulas } from "./js/celulas.js";
 import { renderCultos, iniciarCultosEventos, abrirGerenciarPadraoCultos } from "./js/cultos.js";
 import { iniciarFinanceiro, renderTudoFinanceiro } from "./js/financeiro.js";
 import { renderDashboard } from "./js/dashboard.js";
@@ -158,6 +158,7 @@ function renderTudoCore() {
   renderCelulas();
   renderCultos();
   renderDashboard();
+  if (document.getElementById("view-agenda")?.classList.contains("active")) renderAgendaCelulas();
   // dízimos/custos/ofertas de célula moram no STATE só quando financeiro.js
   // iniciou (tesoureiro/admin) — mas fluxo de caixa e afins dependem TAMBÉM
   // de pessoas/células/cultos "core", então precisam re-renderizar aqui
@@ -203,9 +204,10 @@ iniciarAuth((auth) => {
     iniciarCoreListeners();
     iniciarPessoasEventos();
     iniciarCelulasEventos();
+    iniciarAgendaEventos();
     iniciarCultosEventos();
     iniciarConfiguracoesEventos();
-    iniciarNavegacao();
+    iniciarNavegacao({ onChange: (viewId) => { if (viewId === "agenda") renderAgendaCelulas(); } });
     iniciarBannerInstalacao();
     iniciarBadgeSincronizacao();
   }
